@@ -23,6 +23,7 @@
 #include "redis/rediswriter.thpp"
 #include "remote/messageorigin.hpp"
 #include "base/timer.hpp"
+#include "base/workqueue.hpp"
 #include <hiredis/hiredis.h>
 
 namespace icinga
@@ -41,9 +42,12 @@ public:
 	virtual void Stop(bool runtimeRemoved) override;
 
 private:
-	void ConnectionThreadProc(void);
+	void TryToReconnect(void);
 	void HandleEvents(void);
+	void HandleEvent(const Dictionary::Ptr& event);
 
+	Timer::Ptr m_ReconnectTimer;
+	WorkQueue m_WorkQueue;
 	redisContext *m_Context;
 };
 

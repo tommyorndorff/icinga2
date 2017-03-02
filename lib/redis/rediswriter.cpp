@@ -36,12 +36,21 @@ void RedisWriter::Start(bool runtimeCreated)
 	Log(LogInformation, "RedisWriter")
 	    << "'" << GetName() << "' started.";
 
-	boost::thread thread(boost::bind(&RedisWriter::ConnectionThreadProc, this));
+	m_ReconnectTimer = new Timer();
+	m_ReconnectTimer->SetInterval(15);
+	m_ReconnectTimer->OnTimerExpired.connect(boost::bind(&RedisWriter::TryToReconnect, this));
+	m_ReconnectTimer->Start();
+	m_ReconnectTimer->Reschedule(0);
+
+	boost::thread thread(boost::bind(&RedisWriter::HandleEvents, this));
 	thread.detach();
 }
 
-void RedisWriter::ConnectionThreadProc(void)
+void RedisWriter::TryToReconnect(void)
 {
+	if (m_Context)
+		return;
+
 	String path = GetPath();
 	String host = GetHost();
 
@@ -59,40 +68,31 @@ void RedisWriter::ConnectionThreadProc(void)
 			Log(LogWarning, "RedisWriter", "Connection error: ")
 			    << m_Context->errstr;
 		}
+
+		if (m_Context) {
+			redisFree(m_Context);
+			m_Context = NULL;
+		}
+
+		return;
 	}
 
-	for (;;) {
-		String password = GetPassword();
+	String password = GetPassword();
 
-		if (!password.IsEmpty()) {
-			redisReply *reply = reinterpret_cast<redisReply *>(redisCommand(m_Context, "AUTH %s", password.CStr()));
+	if (!password.IsEmpty()) {
+		redisReply *reply = reinterpret_cast<redisReply *>(redisCommand(m_Context, "AUTH %s", password.CStr()));
 
-			//TODO: Verify if we can continue here.
-			if (!reply)
-				continue;
-
-			if (reply->type == REDIS_REPLY_STATUS || reply->type == REDIS_REPLY_ERROR) {
-				Log(LogInformation, "RedisWriter")
-				    << "AUTH: " << reply->str;
-			}
-
-			freeReplyObject(reply);
+		if (!reply) {
+			redisFree(m_Context);
+			return;
 		}
 
-		HandleEvents();
-
-		for (;;) {
-			Log(LogInformation, "RedisWriter", "Trying to reconnect to redis server");
-
-			if (redisReconnect(m_Context) == REDIS_OK) {
-				Log(LogInformation, "RedisWriter", "Connection to redis server was reestablished");
-				break;
-			}
-
-			Log(LogInformation, "RedisWriter", "Unable to reconnect to redis server: Waiting for next attempt");
-
-			Utility::Sleep(15);
+		if (reply->type == REDIS_REPLY_STATUS || reply->type == REDIS_REPLY_ERROR) {
+			Log(LogInformation, "RedisWriter")
+			    << "AUTH: " << reply->str;
 		}
+
+		freeReplyObject(reply);
 	}
 }
 
@@ -120,33 +120,60 @@ void RedisWriter::HandleEvents(void)
 	queue->AddClient(this);
 
 	for (;;) {
-		Dictionary::Ptr result = queue->WaitForEvent(this);
+		Dictionary::Ptr event = queue->WaitForEvent(this);
 
-		if (!result)
+		if (!event)
 			continue;
 
-		String body = JsonEncode(result);
-
-		redisReply *reply = reinterpret_cast<redisReply *>(redisCommand(m_Context, "LPUSH icinga:events %s", body.CStr()));
-
-		if (!reply)
-			break;
-
-		if (reply->type == REDIS_REPLY_STATUS || reply->type == REDIS_REPLY_ERROR) {
-			Log(LogInformation, "RedisWriter")
-			    << "LPUSH icinga:events: " << reply->str;
-		}
-
-		if (reply->type == REDIS_REPLY_ERROR) {
-			freeReplyObject(reply);
-			break;
-		}
-
-		freeReplyObject(reply);
+		m_WorkQueue.Enqueue(boost::bind(&RedisWriter::HandleEvent, this, event));
 	}
 
 	queue->RemoveClient(this);
 	EventQueue::UnregisterIfUnused(queueName, queue);
+}
+
+void RedisWriter::HandleEvent(const Dictionary::Ptr& event)
+{
+	redisReply *reply1 = reinterpret_cast<redisReply *>(redisCommand(m_Context, "INCR icinga:event.idx"));
+
+	if (!reply1)
+		return;
+
+	if (reply1->type == REDIS_REPLY_STATUS || reply1->type == REDIS_REPLY_ERROR) {
+		Log(LogInformation, "RedisWriter")
+		    << "INCR icinga:event.idx: " << reply1->str;
+	}
+
+	if (reply1->type == REDIS_REPLY_ERROR) {
+		freeReplyObject(reply1);
+		return;
+	}
+
+	VERIFY(reply1->type == REDIS_REPLY_INTEGER);
+
+	long long index = reply1->integer;
+
+	freeReplyObject(reply1);
+
+	String body = JsonEncode(event);
+
+	//TODO: Verify that %lld is supported
+	redisReply *reply2 = reinterpret_cast<redisReply *>(redisCommand(m_Context, "SET icinga:event.%lld %s", index, body.CStr()));
+
+	if (!reply2)
+		return;
+
+	if (reply2->type == REDIS_REPLY_STATUS || reply2->type == REDIS_REPLY_ERROR) {
+		Log(LogInformation, "RedisWriter")
+		    << "SET icinga:event." << index << ": " << reply2->str;
+	}
+
+	if (reply2->type == REDIS_REPLY_ERROR) {
+		freeReplyObject(reply2);
+		return;
+	}
+
+	freeReplyObject(reply2);
 }
 
 void RedisWriter::Stop(bool runtimeRemoved)
