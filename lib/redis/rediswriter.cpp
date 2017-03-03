@@ -42,8 +42,19 @@ void RedisWriter::Start(bool runtimeCreated)
 	m_ReconnectTimer->Start();
 	m_ReconnectTimer->Reschedule(0);
 
+	m_SubscriptionTimer = new Timer();
+	m_SubscriptionTimer->SetInterval(15);
+	m_SubscriptionTimer->OnTimerExpired.connect(boost::bind(&RedisWriter::UpdateSubscriptions, this));
+	m_SubscriptionTimer->Start();
+	m_SubscriptionTimer->Reschedule(0);
+
 	boost::thread thread(boost::bind(&RedisWriter::HandleEvents, this));
 	thread.detach();
+}
+
+void RedisWriter::ReconnectTimerHandler(void)
+{
+	m_WorkQueue.Enqueue(boost::bind(&RedisWriter::TryToReconnect, this));
 }
 
 void RedisWriter::TryToReconnect(void)
@@ -94,6 +105,37 @@ void RedisWriter::TryToReconnect(void)
 
 		freeReplyObject(reply);
 	}
+}
+
+void RedisWriter::UpdateSubscriptionsTimerHandler(void)
+{
+	m_WorkQueue.Enqueue(boost::bind(&RedisWriter::UpdateSubscriptions, this));
+}
+
+void RedisWriter::UpdateSubscriptions(void)
+{
+	redisReply *reply = reinterpret_cast<redisReply *>(redisCommand(m_Context, "HGETALL icinga:subscription"));
+
+	if (!reply) {
+		redisFree(m_Context);
+		return;
+	}
+
+	if (reply->type == REDIS_REPLY_STATUS || reply->type == REDIS_REPLY_ERROR) {
+		Log(LogInformation, "RedisWriter")
+		    << "AUTH: " << reply->str;
+	}
+
+	//TODO
+	VERIFY(reply->type == REDIS_REPLY_ARRAY);
+
+	for (int = 0; i < reply->elements; i++) {
+		redisReply *reply1 = reply->element[i];
+
+		//TODO
+	}
+
+	freeReplyObject(reply);
 }
 
 void RedisWriter::HandleEvents(void)
@@ -149,6 +191,7 @@ void RedisWriter::HandleEvent(const Dictionary::Ptr& event)
 		return;
 	}
 
+	//TODO
 	VERIFY(reply1->type == REDIS_REPLY_INTEGER);
 
 	long long index = reply1->integer;
