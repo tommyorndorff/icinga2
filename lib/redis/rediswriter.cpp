@@ -233,6 +233,23 @@ void RedisWriter::HandleEvent(const Dictionary::Ptr& event)
 	}
 
 	freeReplyObject(reply2);
+
+	redisReply *reply3 = reinterpret_cast<redisReply *>(redisCommand(m_Context, "EXPIRE icinga:event.%lld 3600", index, body.CStr()));
+
+	if (!reply3)
+		return;
+
+	if (reply3->type == REDIS_REPLY_STATUS || reply3->type == REDIS_REPLY_ERROR) {
+		Log(LogInformation, "RedisWriter")
+		    << "EXPIRE icinga:event." << index << ": " << reply3->str;
+	}
+
+	if (reply3->type == REDIS_REPLY_ERROR) {
+		freeReplyObject(reply3);
+		return;
+	}
+
+	freeReplyObject(reply3);
 }
 
 void RedisWriter::Stop(bool runtimeRemoved)
