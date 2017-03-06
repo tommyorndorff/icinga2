@@ -29,6 +29,11 @@
 namespace icinga
 {
 
+struct RedisSubscriptionInfo
+{
+	std::set<String> EventTypes;
+};
+
 /**
  * @ingroup redis
  */
@@ -37,6 +42,8 @@ class RedisWriter : public ObjectImpl<RedisWriter>
 public:
 	DECLARE_OBJECT(RedisWriter);
 	DECLARE_OBJECTNAME(RedisWriter);
+
+	RedisWriter(void);
 
 	virtual void Start(bool runtimeCreated) override;
 	virtual void Stop(bool runtimeRemoved) override;
@@ -54,6 +61,7 @@ private:
 	Timer::Ptr m_SubscriptionTimer;
 	WorkQueue m_WorkQueue;
 	redisContext *m_Context;
+	std::map<String, RedisSubscriptionInfo> m_Subscriptions;
 };
 
 }

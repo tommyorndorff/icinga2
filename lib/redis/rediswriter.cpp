@@ -26,6 +26,10 @@ using namespace icinga;
 
 REGISTER_TYPE(RedisWriter);
 
+RedisWriter::RedisWriter(void)
+    : m_Context(NULL)
+{ }
+
 /**
  * Starts the component.
  */
@@ -46,7 +50,6 @@ void RedisWriter::Start(bool runtimeCreated)
 	m_SubscriptionTimer->SetInterval(15);
 	m_SubscriptionTimer->OnTimerExpired.connect(boost::bind(&RedisWriter::UpdateSubscriptions, this));
 	m_SubscriptionTimer->Start();
-	m_SubscriptionTimer->Reschedule(0);
 
 	boost::thread thread(boost::bind(&RedisWriter::HandleEvents, this));
 	thread.detach();
@@ -114,6 +117,11 @@ void RedisWriter::UpdateSubscriptionsTimerHandler(void)
 
 void RedisWriter::UpdateSubscriptions(void)
 {
+	if (m_Context == NULL)
+		return;
+
+	Log(LogInformation, "RedisWriter", "Updating Redis subscriptions");
+
 	redisReply *reply = reinterpret_cast<redisReply *>(redisCommand(m_Context, "HGETALL icinga:subscription"));
 
 	if (!reply) {
@@ -123,14 +131,22 @@ void RedisWriter::UpdateSubscriptions(void)
 
 	if (reply->type == REDIS_REPLY_STATUS || reply->type == REDIS_REPLY_ERROR) {
 		Log(LogInformation, "RedisWriter")
-		    << "AUTH: " << reply->str;
+		    << "HGETALL icinga:subscription: " << reply->str;
 	}
 
 	//TODO
 	VERIFY(reply->type == REDIS_REPLY_ARRAY);
+	VERIFY(reply->elements % 2 == 0);
 
-	for (size_t i = 0; i < reply->elements; i++) {
-		redisReply *reply1 = reply->element[i];
+	for (size_t i = 0; i < reply->elements; i += 2) {
+		redisReply *keyReply = reply->element[i];
+		VERIFY(keyReply->type == REDIS_REPLY_STRING);
+
+		redisReply *valueReply = reply->element[i + 1];
+		VERIFY(valueReply->type == REDIS_REPLY_STRING);
+
+		Log(LogInformation, "RedisWriter")
+		    << "Subscriber Info - Key: " << keyReply->str << " Value: " << valueReply->str;
 
 		//TODO
 	}
