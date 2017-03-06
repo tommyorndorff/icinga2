@@ -145,9 +145,17 @@ void RedisWriter::UpdateSubscriptions(void)
 		redisReply *valueReply = reply->element[i + 1];
 		VERIFY(valueReply->type == REDIS_REPLY_STRING);
 
-		Log(LogInformation, "RedisWriter")
-		    << "Subscriber Info - Key: " << keyReply->str << " Value: " << valueReply->str;
+		try {
+			Dictionary::Ptr subscriberInfo = JsonDecode(valueReply->str);
 
+			Log(LogInformation, "RedisWriter")
+			    << "Subscriber Info - Key: " << keyReply->str << " Value: " << Value(subscriberInfo);
+		} catch (const std::exception& ex) {
+			Log(LogWarning, "RedisWriter")
+			    << "Invalid Redis subscriber info for subscriber '" << keyReply->str << "': " << DiagnosticInformation(ex);
+
+			continue;
+		}
 		//TODO
 	}
 
