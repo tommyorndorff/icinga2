@@ -42,11 +42,16 @@ public:
 	virtual void Stop(bool runtimeRemoved) override;
 
 private:
+	void ReconnectTimerHandler(void);
 	void TryToReconnect(void);
 	void HandleEvents(void);
 	void HandleEvent(const Dictionary::Ptr& event);
 
+	void UpdateSubscriptionsTimerHandler(void);
+	void UpdateSubscriptions(void);
+
 	Timer::Ptr m_ReconnectTimer;
+	Timer::Ptr m_SubscriptionTimer;
 	WorkQueue m_WorkQueue;
 	redisContext *m_Context;
 };

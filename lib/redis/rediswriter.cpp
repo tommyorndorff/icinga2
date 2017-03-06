@@ -129,7 +129,7 @@ void RedisWriter::UpdateSubscriptions(void)
 	//TODO
 	VERIFY(reply->type == REDIS_REPLY_ARRAY);
 
-	for (int = 0; i < reply->elements; i++) {
+	for (size_t i = 0; i < reply->elements; i++) {
 		redisReply *reply1 = reply->element[i];
 
 		//TODO
