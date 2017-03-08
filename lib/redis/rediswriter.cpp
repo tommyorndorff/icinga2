@@ -134,6 +134,8 @@ void RedisWriter::UpdateSubscriptions(void)
 		    << "HGETALL icinga:subscription: " << reply->str;
 	}
 
+	m_Subscriptions.clear();
+
 	//TODO
 	VERIFY(reply->type == REDIS_REPLY_ARRAY);
 	VERIFY(reply->elements % 2 == 0);
@@ -146,10 +148,19 @@ void RedisWriter::UpdateSubscriptions(void)
 		VERIFY(valueReply->type == REDIS_REPLY_STRING);
 
 		try {
-			Dictionary::Ptr subscriberInfo = JsonDecode(valueReply->str);
+			Dictionary::Ptr subscriptionInfo = JsonDecode(valueReply->str);
 
 			Log(LogInformation, "RedisWriter")
-			    << "Subscriber Info - Key: " << keyReply->str << " Value: " << Value(subscriberInfo);
+			    << "Subscriber Info - Key: " << keyReply->str << " Value: " << Value(subscriptionInfo);
+
+			RedisSubscriptionInfo rsi;
+
+			Array::Ptr types = subscriptionInfo->Get("types");
+
+			if (types)
+				rsi.EventTypes = types->ToSet<String>();
+
+			m_Subscriptions[keyReply->str] = rsi;
 		} catch (const std::exception& ex) {
 			Log(LogWarning, "RedisWriter")
 			    << "Invalid Redis subscriber info for subscriber '" << keyReply->str << "': " << DiagnosticInformation(ex);
@@ -258,6 +269,33 @@ void RedisWriter::HandleEvent(const Dictionary::Ptr& event)
 	}
 
 	freeReplyObject(reply3);
+
+	String type = event->Get("type");
+
+	for (const std::pair<String, RedisSubscriptionInfo>& kv : m_Subscriptions) {
+		const auto& name = kv.first;
+		const auto& rsi = kv.second;
+
+		if (rsi.EventTypes.find(type) == rsi.EventTypes.end())
+			continue;
+
+		redisReply *reply4 = reinterpret_cast<redisReply *>(redisCommand(m_Context, "LPUSH icinga:subscription:%sa %lld", name.CStr(), index));
+
+		if (!reply4)
+			return;
+
+		if (reply4->type == REDIS_REPLY_STATUS || reply4->type == REDIS_REPLY_ERROR) {
+			Log(LogInformation, "RedisWriter")
+			    << "LPUSH icinga:subscription:" << kv.first << " " << index << ": " << reply4->str;
+		}
+
+		if (reply4->type == REDIS_REPLY_ERROR) {
+			freeReplyObject(reply4);
+			return;
+		}
+
+		freeReplyObject(reply4);
+	}
 }
 
 void RedisWriter::Stop(bool runtimeRemoved)
