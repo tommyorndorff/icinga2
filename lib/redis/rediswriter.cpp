@@ -42,13 +42,13 @@ void RedisWriter::Start(bool runtimeCreated)
 
 	m_ReconnectTimer = new Timer();
 	m_ReconnectTimer->SetInterval(15);
-	m_ReconnectTimer->OnTimerExpired.connect(boost::bind(&RedisWriter::TryToReconnect, this));
+	m_ReconnectTimer->OnTimerExpired.connect(boost::bind(&RedisWriter::ReconnectTimerHandler, this));
 	m_ReconnectTimer->Start();
 	m_ReconnectTimer->Reschedule(0);
 
 	m_SubscriptionTimer = new Timer();
 	m_SubscriptionTimer->SetInterval(15);
-	m_SubscriptionTimer->OnTimerExpired.connect(boost::bind(&RedisWriter::UpdateSubscriptions, this));
+	m_SubscriptionTimer->OnTimerExpired.connect(boost::bind(&RedisWriter::UpdateSubscriptionsTimerHandler, this));
 	m_SubscriptionTimer->Start();
 
 	boost::thread thread(boost::bind(&RedisWriter::HandleEvents, this));
