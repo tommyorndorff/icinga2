@@ -279,14 +279,14 @@ void RedisWriter::HandleEvent(const Dictionary::Ptr& event)
 		if (rsi.EventTypes.find(type) == rsi.EventTypes.end())
 			continue;
 
-		redisReply *reply4 = reinterpret_cast<redisReply *>(redisCommand(m_Context, "LPUSH icinga:subscription:%s %lld", name.CStr(), index));
+		redisReply *reply4 = reinterpret_cast<redisReply *>(redisCommand(m_Context, "LPUSH icinga:event:%s %lld", name.CStr(), index));
 
 		if (!reply4)
 			return;
 
 		if (reply4->type == REDIS_REPLY_STATUS || reply4->type == REDIS_REPLY_ERROR) {
 			Log(LogInformation, "RedisWriter")
-			    << "LPUSH icinga:subscription:" << kv.first << " " << index << ": " << reply4->str;
+			    << "LPUSH icinga:event:" << kv.first << " " << index << ": " << reply4->str;
 		}
 
 		if (reply4->type == REDIS_REPLY_ERROR) {
