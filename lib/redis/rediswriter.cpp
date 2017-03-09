@@ -279,7 +279,7 @@ void RedisWriter::HandleEvent(const Dictionary::Ptr& event)
 		if (rsi.EventTypes.find(type) == rsi.EventTypes.end())
 			continue;
 
-		redisReply *reply4 = reinterpret_cast<redisReply *>(redisCommand(m_Context, "LPUSH icinga:subscription:%sa %lld", name.CStr(), index));
+		redisReply *reply4 = reinterpret_cast<redisReply *>(redisCommand(m_Context, "LPUSH icinga:subscription:%s %lld", name.CStr(), index));
 
 		if (!reply4)
 			return;
